@@ -1,72 +1,69 @@
+# -*- coding: utf-8 -*-
 import streamlit as st
 import pandas as pd
 import numpy as np
 from sklearn.linear_model import LinearRegression
 
-# ─── 1. 웹 페이지 기본 설정 및 디자인 ───
+# ─── [웹 UI 설정] ───
 st.set_page_config(
-    page_title="청소년 음료 유해성 진단 AI",
+    page_title="음료 유해성 진단 AI 시스템",
     page_icon="🥤",
     layout="centered"
 )
 
-# 이화여대 컬러 감성을 담은 부드러운 그린/크린조 톤의 메인 타이틀 디자인
-st.title("🥤 청소년 맞춤형 음료 유해성 진단 AI 시스템")
+st.title("🥤 머신러닝 기반 음료 유해성 진단 시스템")
 st.markdown("""
-    본 시스템은 사용자가 입력한 음료 성분을 바탕으로, **머신러닝(다중 선형 회귀) 모델**이 생체 유해성 수치를 예측하고 
-    사용자의 건강 프로필에 맞춰 **종합 위험도 지수**를 실시간으로 컴퓨팅합니다.
+    이 웹사이트는 **다중 선형 회귀(Linear Regression)** AI 모델을 사용하여 
+    실험하지 않은 새로운 음료의 유해성 수치를 예측하고, 맞춤형 위험 지수를 산출합니다.
 """)
 st.markdown("---")
 
-# ─── 2. 기본 실험 데이터셋 및 머신러닝 모델 초기화 (캐싱 처리) ───
+# ─── [1단계: 머신러닝 모델 학습 (최초 1회만 실행 및 캐싱)] ───
 @st.cache_data
 def train_ml_model():
-    # 보내준 수정본 데이터 반영 (트레비 27분, 포카리 22분, 게토레이 19분)
+    # 원본 실험 데이터셋 구축 (보내주신 수치 반영)
     train_data = {
         'Drink': ['Monster', 'The_King', 'Trevi', 'Pocari_Sweat', 'Gatorade'],
-        'Caffeine': [100, 100, 0, 0, 0],
-        'Sugar': [41, 40, 0, 30, 39],
+        'Caffeine': [100.0, 100.0, 0.0, 0.0, 0.0],
+        'Sugar': [41.0, 40.0, 0.0, 30.0, 39.0],
         'pH': [3.4, 3.3, 4.5, 3.7, 3.0],
         'Corrosion': [8.09, 5.60, 4.84, 4.00, 3.87],
-        'Denaturation_Time': [12, 15, 27, 22, 19]
+        'Denaturation_Time': [12.0, 15.0, 27.0, 22.0, 19.0]
     }
     df_train = pd.DataFrame(train_data)
     
+    # 독립변수(X)와 종속변수(Y) 분리
     X_train = df_train[['Caffeine', 'Sugar', 'pH']]
     Y_train = df_train[['Corrosion', 'Denaturation_Time']]
     
+    # 모델 생성 및 학습
     model = LinearRegression()
     model.fit(X_train, Y_train)
     return model, df_train
 
 model, df_train = train_ml_model()
 
-# ─── 3. 사이드바: 현재 학습된 데이터 풀 시각화 ───
-st.sidebar.header("📊 시스템 학습 데이터 원본")
-st.sidebar.write("네가 직접 수행한 5종의 아날로그 실험 데이터셋이야.")
-st.sidebar.dataframe(df_train, use_container_width=True)
+# ─── [사이드바: 최신 Streamlit 버전에 맞춤 변경] ───
+st.sidebar.header("📊 AI 모델 훈련 데이터셋")
+# 🌟 경고 메시지를 없애기 위해 use_container_width=True 대신 width="stretch" 사용
+st.sidebar.dataframe(df_train, width="stretch")
 
-# ─── 4. 메인 화면: 유저 입력 인터페이스 구축 ───
-st.header("👤 1단계: 유저 정보 및 음료 선택")
+# ─── [2단계: 웹 입력 인터페이스 구현] ───
+st.header("🔍 음료 정보 입력")
 
-# 음료 선택 방식 (기존 음료 선택 혹은 새로운 음료 성분 직접 입력)
-drink_option = st.selectbox(
-    "진단할 음료 유형을 선택하세요:",
-    ["기존 실험 데이터셋에서 선택", "새로운 제3의 음료 성분 입력 (AI 예측)"]
-)
+drink_name = st.text_input("진단할 음료의 이름을 입력하세요:", "핫식스").strip()
 
-# 유저 상태 프로필 가중치 매핑
-user_profile = st.radio(
-    "현재 본인의 건강 취약 상태를 선택하세요:",
-    ("일반 청소년 기준 모드", "위 건강 취약 모드 (속 쓰림, 위염 등)", "치아 건강 취약 모드 (충치, 교정 등)"),
-    horizontal=True
-)
+# 대소문자 구분 없이 기존 데이터셋에 있는지 검사
+drink_list_lower = [d.lower() for d in df_train['Drink']]
 
-st.markdown("### 🧪 2단계: 성분 데이터 입력")
+# 데이터 제어를 위한 세션 초기화
+caff, sugar, ph, corr, denat = 0.0, 0.0, 0.0, 0.0, 0.0
+is_predicted = False
 
-if drink_option == "기존 실험 데이터셋에서 선택":
-    selected_drink = st.selectbox("음료 이름을 골라주세요:", df_train['Drink'].tolist())
-    idx = df_train[df_train['Drink'] == selected_drink].index[0]
+if drink_name.lower() in drink_list_lower:
+    # 1) 기존에 실험했던 음료인 경우
+    st.success(f"🔬 '{drink_name}'은(는) 기존 데이터셋에 있는 음료입니다. 실제 실험 수치를 가져옵니다.")
+    idx = drink_list_lower.index(drink_name.lower())
     
     caff = float(df_train.iloc[idx]['Caffeine'])
     sugar = float(df_train.iloc[idx]['Sugar'])
@@ -75,38 +72,93 @@ if drink_option == "기존 실험 데이터셋에서 선택":
     denat = float(df_train.iloc[idx]['Denaturation_Time'])
     is_predicted = False
     
-    # 선택된 기존 음료의 스펙을 화면에 가볍게 노출
-    st.info(f"✨ 선택된 **{selected_drink}**의 성분 정보 -> 카페인: {caff}mg | 당류: {sugar}g | pH: {ph}")
+    # 기존 성분 표시
+    st.text(f"📋 고유 성분 정보 -> 카페인: {caff}mg | 당류: {sugar}g | pH: {ph}")
 
 else:
-    # 새로운 음료 선택 시 슬라이더와 입력창 노출
-    new_drink_name = st.text_input("새로운 음료의 이름을 입력하세요:", "핫식스")
-    selected_drink = new_drink_name if new_drink_name else "Unknown Drink"
+    # 2) 데이터셋에 없는 새로운 음료인 경우 -> 성분표 직접 입력 유도
+    st.info(f"💡 '{drink_name}'은(는) 새로운 음료입니다. 성분표 정보를 기반으로 실험값을 예측합니다.")
     
     col1, col2, col3 = st.columns(3)
     with col1:
-        caff = st.number_input("카페인 함량 (mg):", min_value=0.0, max_value=500.0, value=60.0, step=5.0)
+        caff = st.number_input("1. 카페인 함량 (mg):", min_value=0.0, value=60.0, step=5.0)
     with col2:
-        sugar = st.number_input("당류 함량 (g):", min_value=0.0, max_value=200.0, value=30.0, step=1.0)
+        sugar = st.number_input("2. 당류 함량 (g):", min_value=0.0, value=30.0, step=1.0)
     with col3:
-        ph = st.slider("음료의 산도 (pH):", min_value=0.0, max_value=14.0, value=3.0, step=0.1)
+        ph = st.number_input("3. 음료의 pH (산도):", min_value=0.0, max_value=14.0, value=3.0, step=0.1)
         
-    # 새로운 성분을 기반으로 머신러닝 모델 구동 (predict)
+    # 머신러닝 추정 실행 (오류 방지를 위해 컬럼명이 매칭된 DataFrame으로 예측)
     X_new = pd.DataFrame([[caff, sugar, ph]], columns=['Caffeine', 'Sugar', 'pH'])
     Y_pred = model.predict(X_new)
     
-    corr = Y_pred[0][0]
-    denat = Y_pred[0][1]
+    corr = float(Y_pred[0][0])
+    denat = float(Y_pred[0][1])
     is_predicted = True
     
-    # 비현실적 예측값 보정용 안전장치
+    # 비현실적 데이터 방지 예외 처리 예외 보정
     if denat <= 0: denat = 1.0
     if corr < 0: corr = 0.0
 
-# ─── 5. 위험도 연산 및 대시보드 출력 ───
+# ─── [3단계: 위험도 연산 및 대시보드 출력] ───
 st.markdown("---")
-st.header("🚨 3단계: AI 실시간 유해성 진단 결과")
-
-if st.button("🧬 종합 위험도 지수 산출하기", type="primary"):
+if st.button("🧬 실시간 유해성 진단 및 결과 산출", type="primary"):
     
-    # 실시간 데이터 풀 정규화를 위한 가상 임베
+    # 실시간 데이터 융합 및 정규화를 위한 데이터프레임 병합
+    temp_row = {
+        'Drink': drink_name, 
+        'Caffeine': caff, 
+        'Sugar': sugar, 
+        'pH': ph, 
+        'Corrosion': corr, 
+        'Denaturation_Time': denat
+    }
+    df_eval = pd.concat([df_train, pd.DataFrame([temp_row])], ignore_index=True)
+    
+    # 전처리 엔지니어링 수행
+    df_eval['pH_Risk'] = 7.0 - df_eval['pH']
+    df_eval['Denaturation_Velocity'] = 1.0 / df_eval['Denaturation_Time']
+    
+    # Min-Max 정규화 파이프라인
+    features_to_norm = ['Caffeine', 'Sugar', 'pH_Risk', 'Corrosion', 'Denaturation_Velocity']
+    for col in features_to_norm:
+        min_val = df_eval[col].min()
+        max_val = df_eval[col].max()
+        if max_val - min_val == 0:
+            df_eval[f'{col}_norm'] = 0.0
+        else:
+            df_eval[f'{col}_norm'] = (df_eval[col] - min_val) / (max_val - min_val + 1e-5)
+            
+    # 가중치 결합 (일반 모드 기준 벡터 정의)
+    weights = np.array([0.40, 0.15, 0.15, 0.15, 0.15])
+    
+    # 최하단에 위치한 현재 검사 대상 음료의 벡터 행 추출
+    new_drink_idx = len(df_eval) - 1
+    drink_vector = df_eval.iloc[new_drink_idx][[f'{c}_norm' for c in features_to_norm]].to_numpy()
+    
+    # 행렬 곱 연산을 통한 종합 위험도 점수 도출
+    risk_score = np.dot(drink_vector, weights) * 100
+    
+    # 웹 화면 시각화 리포트 구성
+    st.subheader(f"📊 [{drink_name}] 유해성 진단 리포트")
+    
+    col_res1, col_res2, col_res3 = st.columns(3)
+    with col_res1:
+        st.metric(label="🚨 종합 위험도 지수", value=f"{risk_score:.2f} / 100")
+    with col_res2:
+        st.metric(label="🦷 AI 추정 치아 부식률", value=f"{corr:.2f} %")
+    with col_res3:
+        st.metric(label="🍳 AI 추정 단백질 변성 시간", value=f"{denat:.2f} 분")
+        
+    # 결과 해석 코멘트 분기
+    if risk_score >= 70:
+        st.error("⚠️ [위험] 이 음료는 현재 입력된 성분 조합상 청소년기 신체 건강에 매우 유해한 지표를 보입니다. 섭취 빈도를 크게 줄여야 합니다.")
+    elif risk_score >= 40:
+        st.warning("⚠️ [주의] 과다 복용 시 신체 손상 우려가 존재합니다. 공복 상태에서의 음용을 지양하세요.")
+    else:
+        st.success("🍏 [보통] 상대적으로 유해성이 덜한 지표를 나타냅니다. 정량 이내의 안전한 음용을 권장합니다.")
+        
+    # 하단 데이터 출처 가이드라인 명시
+    if is_predicted:
+        st.caption("🤖 *Notice: 치아 부식률 and 단백질 변성 시간은 다중 선형 회귀 AI 모델이 기존 실험의 규칙성을 바탕으로 학습 및 보간해 낸 예측치입니다.*")
+    else:
+        st.caption("🔬 *Notice: 이 리포트는 과학실에서 정밀하게 도출된 실제 물리적 실험 데이터 레이블을 기반으로 작동하였습니다.*")
